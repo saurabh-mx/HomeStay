@@ -131,6 +131,13 @@ export const getListings = catchAsync(async (req: Request, res: Response) => {
     prisma.property.count({ where }),
   ]);
 
+  // Vercel Edge Cache: Cache for 60s at CDN edge, allow background stale-while-revalidate for 300s
+  // Eliminates Fast Origin Transfer (FOT) and database compute for repeated requests
+  res.setHeader(
+    "Cache-Control",
+    "public, s-maxage=60, stale-while-revalidate=300"
+  );
+
   res.status(200).json({
     status: "success",
     data: {
@@ -190,6 +197,12 @@ export const getListingById = catchAsync(async (req: Request, res: Response) => 
   if (!property) {
     throw new AppError("Listing not found", 404);
   }
+
+  // Cache property detail at Vercel edge for 120s with 10m SWR
+  res.setHeader(
+    "Cache-Control",
+    "public, s-maxage=120, stale-while-revalidate=600"
+  );
 
   res.status(200).json({
     status: "success",
@@ -296,3 +309,4 @@ export const getMyListings = catchAsync(async (req: Request, res: Response) => {
     data: { properties },
   });
 });
+

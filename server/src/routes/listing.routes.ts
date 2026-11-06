@@ -29,3 +29,4 @@ router.patch("/:id", authorize("HOST", "ADMIN"), validate(updateListingSchema), 
 router.delete("/:id", authorize("HOST", "ADMIN"), deleteListing);
 
 export default router;
+

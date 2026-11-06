@@ -21,3 +21,4 @@ router.patch("/profile/me", validate(updateProfileSchema), updateProfile);
 router.delete("/profile/me", deleteAccount);
 
 export default router;
+

@@ -64,3 +64,4 @@ export const searchListingsSchema = z.object({
 export type CreateListingInput = z.infer<typeof createListingSchema>;
 export type UpdateListingInput = z.infer<typeof updateListingSchema>;
 export type SearchListingsInput = z.infer<typeof searchListingsSchema>;
+

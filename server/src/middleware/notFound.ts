@@ -6,3 +6,4 @@ export const notFound = (req: Request, res: Response) => {
     message: `Route ${req.originalUrl} not found`,
   });
 };
+

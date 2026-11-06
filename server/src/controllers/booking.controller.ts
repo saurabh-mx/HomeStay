@@ -293,3 +293,4 @@ export const updateBookingStatus = catchAsync(async (req: Request, res: Response
     data: { booking: updatedBooking },
   });
 });
+

@@ -148,6 +148,12 @@ export const getListingReviews = catchAsync(async (req: Request, res: Response) 
     prisma.review.count({ where: { propertyId: req.params.listingId } }),
   ]);
 
+  // Reviews are updated infrequently: cache at edge for 5 min, SWR for 30 min
+  res.setHeader(
+    "Cache-Control",
+    "public, s-maxage=300, stale-while-revalidate=1800"
+  );
+
   res.status(200).json({
     status: "success",
     data: {
@@ -223,3 +229,4 @@ export const respondToReview = catchAsync(async (req: Request, res: Response) =>
     data: { review: updatedReview },
   });
 });
+

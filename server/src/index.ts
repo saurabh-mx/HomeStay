@@ -4,6 +4,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
+import compression from "compression";
 import dotenv from "dotenv";
 import { createServer } from "http";
 
@@ -24,9 +25,24 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
+// Enable strong ETags for 304 conditional request optimization (0-byte payload egress)
+app.set("etag", "strong");
+
 // ===========================================
 // Global Middleware
 // ===========================================
+
+// Compression for optimal Egress and Fast Origin Transfer reduction
+app.use(
+  compression({
+    level: 6,
+    threshold: 1024, // Only compress responses above 1KB
+    filter: (req, res) => {
+      if (req.headers["x-no-compression"]) return false;
+      return compression.filter(req, res);
+    },
+  })
+);
 
 // Security headers
 app.use(helmet());
@@ -88,19 +104,23 @@ app.use(notFound);
 app.use(errorHandler);
 
 // ===========================================
-// Start Server
+// Start Server (Standalone / Local / Container)
 // ===========================================
 const PORT = process.env.PORT || 5000;
 
-httpServer.listen(PORT, () => {
-  console.log(`
+if (process.env.VERCEL !== "1") {
+  httpServer.listen(PORT, () => {
+    console.log(`
   🏠 HomeStay API Server
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   🚀 Running on:    http://localhost:${PORT}
   📦 Environment:   ${process.env.NODE_ENV || "development"}
   📋 API Health:    http://localhost:${PORT}/api/health
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  `);
-});
+    `);
+  });
+}
 
+export { app, httpServer };
 export default app;
+

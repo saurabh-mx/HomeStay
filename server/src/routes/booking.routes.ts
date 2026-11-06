@@ -28,3 +28,4 @@ router.get("/host/requests", getHostBookings);
 router.patch("/:id/status", validate(updateBookingStatusSchema), updateBookingStatus);
 
 export default router;
+
