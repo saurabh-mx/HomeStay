@@ -1,0 +1,24 @@
+{
+  "name": "homestay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An Airbnb-style vacation rental marketplace",
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter server dev\" \"pnpm --filter web dev\"",
+    "dev:server": "pnpm --filter server dev",
+    "dev:web": "pnpm --filter web dev",
+    "build": "pnpm --filter server build && pnpm --filter web build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "db:migrate": "pnpm --filter server prisma migrate dev",
+    "db:seed": "pnpm --filter server prisma db seed",
+    "db:studio": "pnpm --filter server prisma studio"
+  },
+  "keywords": ["homestay", "airbnb", "vacation-rental", "marketplace"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

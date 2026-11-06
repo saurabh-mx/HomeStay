@@ -1,0 +1,512 @@
+// ─────────────────────────────────────────────────────────────
+// HomeStay — Airbnb-style Vacation Rental Marketplace
+// Database: PostgreSQL  |  ORM: Prisma
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════════════════════
+
+enum UserRole {
+  GUEST
+  HOST
+  ADMIN
+}
+
+enum IdentityVerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum PropertyType {
+  APARTMENT
+  HOUSE
+  VILLA
+  COTTAGE
+  CABIN
+  TOWNHOUSE
+  BUNGALOW
+  LOFT
+  STUDIO
+  PENTHOUSE
+  FARMHOUSE
+  TREEHOUSE
+  HOUSEBOAT
+  TENT
+  OTHER
+}
+
+enum PropertyStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  ARCHIVED
+}
+
+enum CancellationPolicy {
+  FLEXIBLE
+  MODERATE
+  STRICT
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentGateway {
+  STRIPE
+  RAZORPAY
+}
+
+enum PaymentType {
+  CHARGE
+  REFUND
+  PAYOUT
+}
+
+enum NotificationType {
+  BOOKING_REQUEST
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  BOOKING_COMPLETED
+  PAYMENT_RECEIVED
+  PAYMENT_PAYOUT
+  REVIEW_RECEIVED
+  MESSAGE_RECEIVED
+  LISTING_APPROVED
+  ACCOUNT_UPDATE
+  SYSTEM
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODELS
+// ═══════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────
+// User
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id                     String                     @id @default(cuid())
+  email                  String                     @unique
+  passwordHash           String?                    @map("password_hash")
+  name                   String
+  phone                  String?
+  avatar                 String?
+  bio                    String?
+  role                   UserRole                   @default(GUEST)
+  emailVerified          Boolean                    @default(false) @map("email_verified")
+  phoneVerified          Boolean                    @default(false) @map("phone_verified")
+  identityVerification   IdentityVerificationStatus @default(UNVERIFIED) @map("identity_verification")
+  identityDocumentUrl    String?                    @map("identity_document_url")
+
+  // Host-specific fields
+  stripeAccountId        String?                    @map("stripe_account_id")
+  razorpayAccountId      String?                    @map("razorpay_account_id")
+  hostSince              DateTime?                  @map("host_since")
+  superhost              Boolean                    @default(false)
+
+  // Auth
+  refreshToken           String?                    @map("refresh_token")
+  passwordResetToken     String?                    @map("password_reset_token")
+  passwordResetExpires   DateTime?                  @map("password_reset_expires")
+
+  createdAt              DateTime                   @default(now()) @map("created_at")
+  updatedAt              DateTime                   @updatedAt @map("updated_at")
+
+  // Relations
+  properties             Property[]
+  bookingsAsGuest        Booking[]                  @relation("GuestBookings")
+  bookingsAsHost         Booking[]                  @relation("HostBookings")
+  reviewsWritten         Review[]                   @relation("ReviewAuthor")
+  reviewsReceived        Review[]                   @relation("ReviewTarget")
+  messagesSent           Message[]
+  wishlists              Wishlist[]
+  notifications          Notification[]
+  conversationsAsGuest   Conversation[]             @relation("ConversationGuest")
+  conversationsAsHost    Conversation[]             @relation("ConversationHost")
+
+  @@index([email])
+  @@index([role])
+  @@index([identityVerification])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Property / Listing
+// ─────────────────────────────────────────────────────────────
+
+model Property {
+  id                  String              @id @default(cuid())
+  hostId              String              @map("host_id")
+  title               String
+  description         String
+  propertyType        PropertyType        @map("property_type")
+
+  // Location
+  addressLine1        String              @map("address_line_1")
+  addressLine2        String?             @map("address_line_2")
+  city                String
+  state               String?
+  country             String
+  postalCode          String?             @map("postal_code")
+  latitude            Float
+  longitude           Float
+
+  // Pricing
+  pricePerNight       Decimal             @map("price_per_night") @db.Decimal(10, 2)
+  cleaningFee         Decimal             @default(0) @map("cleaning_fee") @db.Decimal(10, 2)
+  currency            String              @default("USD") @db.VarChar(3)
+
+  // Capacity & Layout
+  maxGuests           Int                 @map("max_guests")
+  bedrooms            Int
+  beds                Int
+  bathrooms           Decimal             @db.Decimal(3, 1)
+
+  // Details
+  amenities           String[]
+  photos              String[]
+  houseRules          String?             @map("house_rules")
+  checkInTime         String?             @map("check_in_time")
+  checkOutTime        String?             @map("check_out_time")
+  checkInInstructions String?             @map("check_in_instructions")
+
+  // Policies & Settings
+  cancellationPolicy  CancellationPolicy  @default(FLEXIBLE) @map("cancellation_policy")
+  instantBook         Boolean             @default(false) @map("instant_book")
+  status              PropertyStatus      @default(DRAFT)
+  minimumStay         Int                 @default(1) @map("minimum_stay")
+  maximumStay         Int?                @map("maximum_stay")
+
+  // Aggregated ratings (denormalized for query performance)
+  averageRating       Float?              @map("average_rating")
+  totalReviews        Int                 @default(0) @map("total_reviews")
+
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  host                User                @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  availability        Availability[]
+  bookings            Booking[]
+  reviews             Review[]
+  wishlistItems       WishlistItem[]
+
+  @@index([hostId])
+  @@index([status])
+  @@index([propertyType])
+  @@index([city])
+  @@index([country])
+  @@index([pricePerNight])
+  @@index([latitude, longitude])
+  @@index([maxGuests])
+  @@index([instantBook])
+  @@index([averageRating])
+  @@index([status, propertyType, city])
+  @@index([status, pricePerNight])
+  @@index([status, city, pricePerNight])
+  @@map("properties")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Availability — per-property calendar management
+// ─────────────────────────────────────────────────────────────
+
+model Availability {
+  id              String    @id @default(cuid())
+  propertyId      String    @map("property_id")
+  date            DateTime  @db.Date
+  available       Boolean   @default(true)
+  priceOverride   Decimal?  @map("price_override") @db.Decimal(10, 2)
+  minimumStay     Int?      @map("minimum_stay")
+  note            String?
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  property        Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, date])
+  @@index([propertyId, date])
+  @@index([propertyId, available, date])
+  @@map("availability")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Booking
+// ─────────────────────────────────────────────────────────────
+
+model Booking {
+  id                String         @id @default(cuid())
+  propertyId        String         @map("property_id")
+  guestId           String         @map("guest_id")
+  hostId            String         @map("host_id")
+
+  checkIn           DateTime       @map("check_in") @db.Date
+  checkOut          DateTime       @map("check_out") @db.Date
+  numberOfGuests    Int            @map("number_of_guests")
+  numberOfNights    Int            @map("number_of_nights")
+
+  // Pricing breakdown (snapshot at time of booking)
+  pricePerNight     Decimal        @map("price_per_night") @db.Decimal(10, 2)
+  nightsTotal       Decimal        @map("nights_total") @db.Decimal(10, 2)
+  cleaningFee       Decimal        @default(0) @map("cleaning_fee") @db.Decimal(10, 2)
+  guestServiceFee   Decimal        @default(0) @map("guest_service_fee") @db.Decimal(10, 2)
+  hostServiceFee    Decimal        @default(0) @map("host_service_fee") @db.Decimal(10, 2)
+  totalPrice        Decimal        @map("total_price") @db.Decimal(10, 2)
+  hostPayout        Decimal        @map("host_payout") @db.Decimal(10, 2)
+  currency          String         @default("USD") @db.VarChar(3)
+
+  status            BookingStatus  @default(PENDING)
+  paymentStatus     PaymentStatus  @default(PENDING) @map("payment_status")
+
+  // Cancellation
+  cancelledAt       DateTime?      @map("cancelled_at")
+  cancelledBy       String?        @map("cancelled_by")
+  cancellationReason String?       @map("cancellation_reason")
+
+  specialRequests   String?        @map("special_requests")
+  guestMessage      String?        @map("guest_message")
+
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  property          Property       @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  guest             User           @relation("GuestBookings", fields: [guestId], references: [id], onDelete: Restrict)
+  host              User           @relation("HostBookings", fields: [hostId], references: [id], onDelete: Restrict)
+  payments          Payment[]
+  reviews           Review[]
+  conversation      Conversation?
+
+  @@index([propertyId])
+  @@index([guestId])
+  @@index([hostId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([checkIn, checkOut])
+  @@index([propertyId, checkIn, checkOut])
+  @@index([guestId, status])
+  @@index([hostId, status])
+  @@map("bookings")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Payment
+// ─────────────────────────────────────────────────────────────
+
+model Payment {
+  id                String          @id @default(cuid())
+  bookingId         String          @map("booking_id")
+  amount            Decimal         @db.Decimal(10, 2)
+  currency          String          @default("USD") @db.VarChar(3)
+  gateway           PaymentGateway
+  transactionId     String?         @unique @map("transaction_id")
+  type              PaymentType
+  status            PaymentStatus   @default(PENDING)
+
+  // Gateway-specific metadata
+  gatewayResponse   Json?           @map("gateway_response")
+  refundReason      String?         @map("refund_reason")
+
+  processedAt       DateTime?       @map("processed_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  booking           Booking         @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+
+  @@index([bookingId])
+  @@index([gateway])
+  @@index([type])
+  @@index([status])
+  @@index([transactionId])
+  @@index([bookingId, type])
+  @@map("payments")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Review — bidirectional (Guest ↔ Host)
+// ─────────────────────────────────────────────────────────────
+
+model Review {
+  id                  String    @id @default(cuid())
+  bookingId           String    @map("booking_id")
+  propertyId          String    @map("property_id")
+  reviewerId          String    @map("reviewer_id")
+  revieweeId          String    @map("reviewee_id")
+
+  // Overall rating
+  rating              Int       // 1-5
+
+  // Sub-ratings (for guest → property reviews)
+  cleanlinessRating   Int?      @map("cleanliness_rating")
+  accuracyRating      Int?      @map("accuracy_rating")
+  checkinRating       Int?      @map("checkin_rating")
+  communicationRating Int?      @map("communication_rating")
+  locationRating      Int?      @map("location_rating")
+  valueRating         Int?      @map("value_rating")
+
+  comment             String
+  response            String?
+  respondedAt         DateTime? @map("responded_at")
+
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  booking             Booking   @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  property            Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  reviewer            User      @relation("ReviewAuthor", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewee            User      @relation("ReviewTarget", fields: [revieweeId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@index([reviewerId])
+  @@index([revieweeId])
+  @@index([rating])
+  @@index([bookingId])
+  @@index([propertyId, rating])
+  @@map("reviews")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Conversation & Messages
+// ─────────────────────────────────────────────────────────────
+
+model Conversation {
+  id            String    @id @default(cuid())
+  bookingId     String?   @unique @map("booking_id")
+  guestId       String    @map("guest_id")
+  hostId        String    @map("host_id")
+  propertyId    String?   @map("property_id")
+
+  lastMessageAt DateTime? @map("last_message_at")
+  archived      Boolean   @default(false)
+
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  booking       Booking?  @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  guest         User      @relation("ConversationGuest", fields: [guestId], references: [id], onDelete: Cascade)
+  host          User      @relation("ConversationHost", fields: [hostId], references: [id], onDelete: Cascade)
+  messages      Message[]
+
+  @@index([guestId])
+  @@index([hostId])
+  @@index([lastMessageAt])
+  @@index([guestId, hostId])
+  @@map("conversations")
+}
+
+model Message {
+  id              String    @id @default(cuid())
+  conversationId  String    @map("conversation_id")
+  senderId        String    @map("sender_id")
+  content         String
+  read            Boolean   @default(false)
+  readAt          DateTime? @map("read_at")
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender          User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([conversationId, createdAt])
+  @@index([conversationId, read])
+  @@map("messages")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Wishlist
+// ─────────────────────────────────────────────────────────────
+
+model Wishlist {
+  id          String         @id @default(cuid())
+  userId      String         @map("user_id")
+  name        String         @default("My Wishlist")
+  privacy     String         @default("PRIVATE")
+
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       WishlistItem[]
+
+  @@index([userId])
+  @@map("wishlists")
+}
+
+model WishlistItem {
+  id          String    @id @default(cuid())
+  wishlistId  String    @map("wishlist_id")
+  propertyId  String    @map("property_id")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  wishlist    Wishlist   @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  property    Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([wishlistId, propertyId])
+  @@index([propertyId])
+  @@map("wishlist_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Notification
+// ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String           @map("user_id")
+  type        NotificationType
+  title       String
+  message     String
+  data        Json?
+  read        Boolean          @default(false)
+  readAt      DateTime?        @map("read_at")
+
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@index([type])
+  @@map("notifications")
+}
